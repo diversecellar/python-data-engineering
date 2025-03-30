@@ -42,7 +42,28 @@ def df_datetime_converter(df_name, col_datetime_lookup='date'):
             df_name[column] = pd.to_datetime(df_name[column])
     return df_name
 
-def df_boxplotter(df_name, col_xplot, col_yplot, type_plot:int, *args): #type_plot -> 0 for dist, 1 for money
+def df_one_boxplotter(df_name, col_yplot, type_plot:int, *args): #type_plot -> 0 for dist, 1 for money
+    fig, ax = matplotlib.pyplot.subplots(figsize=(8, 6), dpi=100)
+    # Initiate the sns boxplotter
+    sns.boxplot(y=df_name[col_yplot], ax=ax)
+    # Set the plot title
+    matplotlib.pyplot.title('{} box plot to visualise outliers'.format(col_yplot))
+    # Here we set the y-axis (response) labels 
+    if type_plot == 0:
+        matplotlib.pyplot.ylabel('{} in miles'.format(col_yplot))
+    if type_plot == 1:
+        matplotlib.pyplot.ylabel('{} in $'.format(col_yplot))
+    if type_plot == 2:
+        matplotlib.pyplot.ylabel('{}'.format(col_yplot))
+    # Set xtick rotation
+    if args:
+        matplotlib.pyplot.xticks(rotation=0, horizontalalignment=arg[0])	
+    # Set y axis grid only
+    ax.yaxis.grid(True)
+    matplotlib.pyplot.savefig("Boxplot_x-{}_y-{}.png".format(col_xplot, col_yplot))
+    matplotlib.pyplot.show()
+
+def df_multi_boxplotter(df_name, col_xplot, col_yplot, type_plot:int, *args): #type_plot -> 0 for dist, 1 for money
     fig, ax = matplotlib.pyplot.subplots(figsize=(8, 6), dpi=100)
     # Initiate the sns boxplotter
     sns.boxplot(x=df_name[col_xplot],
@@ -69,9 +90,9 @@ def df_explore_unique_categories(df_name, col):
     df_col_unqiue = df_name.drop_duplicates(subset=col, keep='first')
     return df_col_unqiue[col]
 
-def df_histplotter(df_name, col_plot, type_plot:int, bins=10, *args): #type_plot -> 0 for dist, 1 for money
-    fig, ax = matplotlib.pyplot.subplots(figsize=(8, 6), dpi=85)
-    x, y = sns.histplot(data=df_name, x=col_plot)
+def df_histplotter(df_name, col_plot, type_plot:int, bins=10): #type_plot -> 0 for dist, 1 for money
+    fig = matplotlib.pyplot.subplots(figsize=(8, 6), dpi=85)
+    sns.histplot(data=df_name, x=col_plot)
     matplotlib.pyplot.title('{} histogram plot'.format(col_plot))
     if type_plot == 0:
         matplotlib.pyplot.xlabel('{} in miles'.format(col_plot))
@@ -82,13 +103,7 @@ def df_histplotter(df_name, col_plot, type_plot:int, bins=10, *args): #type_plot
     #if df_name[col_plot].max() > 0:
     #    matplotlib.pyplot.xlim(0.0, 1.25*df_name[col_plot].max())
     #else:
-    #    matplotlib.pyplot.xlim(0.0-(1.25*df_name[col_plot].max()/bins), 1.25*df_name[col_plot].max())
-    if args:
-        if isinstance(args[0], dict):
-            args_dict = args[0]
-            mean = ax.vlines(x=args_dict['mean'], ymin=y.min(), ymax=y.max(), colors='mean')
-            mode = ax.vlines(x=args_dict['mode'], ymin=y.min(), ymax=y.max(), colors='mode')
-            median = ax.vlines(x=args_dict['median'], ymin=y.min(), ymax=y.max(), colors='median')
+    #    matplotlib.pyplot.xlim(0.0-(1.25*df_name[col_plot].max()/bins), 1.25*df_name[col_plot].max()) 
     matplotlib.pyplot.savefig("Histogram_x-{}.png".format(col_plot))
     matplotlib.pyplot.show()
 
@@ -135,13 +150,13 @@ def df_groupby_mask_operate(df, col_name_masker: str, col_name_operate: str, fil
         df_filtered = df_groupby.groupby([col_name_masker]).agg({col_name_operate:operations_list})
         return df_filtered
 
-def df_grouped_barplotter(df_name, col_groupby: str, col_plot: str, type_plot: int):
-    df_grouped = df_groupby_mask_operate(df_name, col_groupby, col_plot, 0, '1', 'mean')
+def df_grouped_barplotter(df_name, col_groupby: str, col_plot: str, type_plot: int, *args):
+    df_grouped = df_groupby_mask_operate(df_name, col_groupby, col_plot, 0, '1', args[0])
     x_plot = [row for row, index in df_grouped.iterrows()]
     y_plot = [index[0] for row, index in df_grouped.iterrows()]
     matplotlib.pyplot.figure(figsize=(8, 6), dpi=85)
-    matplotlib.pyplot.title('{} by {} grouped bar plot'.format(col_plot, col_groupby))
-    sns.barplot(x=x_plot, y=y_plot, ci=False)
+    matplotlib.pyplot.title('{} of {} by {} grouped bar plot'.format(args[0], col_plot, col_groupby))
+    sns.barplot(x=x_plot, y=y_plot, errorbar=('ci', False))
     if type_plot == 0:
         matplotlib.pyplot.ylabel('{} in miles'.format(col_plot))
     if type_plot == 1:
