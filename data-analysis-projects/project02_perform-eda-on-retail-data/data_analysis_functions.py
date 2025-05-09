@@ -1,14 +1,42 @@
+import pandas as pd
+import numpy as np
+# Important imports for preprocessing, modeling, and evaluation.
+from statsmodels.stats.outliers_influence \
+import variance_inflation_factor as smvif
+import statsmodels.formula.api as smfapi
+import statsmodels.api as smapi
+import statsmodels.tools.tools as smtools
+import statsmodels.stats.multicomp as smmulti
+import sklearn.linear_model as skllinmod
+import sklearn.naive_bayes as sklnvbys
+import sklearn.metrics as sklmtrcs
+import sklearn.model_selection as sklmodslct
+from statsmodels.tools.tools import add_constant as smac
+from statsmodels.stats.multicomp import pairwise_tukeyhsd
+# Visualization package imports.
+import matplotlib.pyplot as plt
+import seaborn as sns
+# Others
+import calendar as cal
+import re
+import unidecode
+
+# Run this cell to import your custom functions.
+
 # Import common df functions
+### YOUR CODE HERE ###
 import matplotlib
 import seaborn as sns
 import statsmodels
 
-### CODE ###
 # load all fundamental df functions
 # list of all df functions
 ### YOUR CODE HERE ### 
 def df_print_row_and_columns(df_name):
-    df_rows, df_columns = df_name.shape
+    try:
+        df_rows, df_columns = df_name.shape
+    except Exception as e:
+        df_rows, df_columns = df_name.to_frame().shape
     print("rows = {}".format(df_rows))
     print("columns = {}".format(df_columns))
 
@@ -42,28 +70,7 @@ def df_datetime_converter(df_name, col_datetime_lookup='date'):
             df_name[column] = pd.to_datetime(df_name[column])
     return df_name
 
-def df_one_boxplotter(df_name, col_yplot, type_plot:int, *args): #type_plot -> 0 for dist, 1 for money
-    fig, ax = matplotlib.pyplot.subplots(figsize=(8, 6), dpi=100)
-    # Initiate the sns boxplotter
-    sns.boxplot(y=df_name[col_yplot], ax=ax)
-    # Set the plot title
-    matplotlib.pyplot.title('{} box plot to visualise outliers'.format(col_yplot))
-    # Here we set the y-axis (response) labels 
-    if type_plot == 0:
-        matplotlib.pyplot.ylabel('{} in miles'.format(col_yplot))
-    if type_plot == 1:
-        matplotlib.pyplot.ylabel('{} in $'.format(col_yplot))
-    if type_plot == 2:
-        matplotlib.pyplot.ylabel('{}'.format(col_yplot))
-    # Set xtick rotation
-    if args:
-        matplotlib.pyplot.xticks(rotation=0, horizontalalignment=arg[0])	
-    # Set y axis grid only
-    ax.yaxis.grid(True)
-    matplotlib.pyplot.savefig("Boxplot_x-{}_y-{}.png".format(col_xplot, col_yplot))
-    matplotlib.pyplot.show()
-
-def df_multi_boxplotter(df_name, col_xplot, col_yplot, type_plot:int, *args): #type_plot -> 0 for dist, 1 for money
+def df_boxplotter(df_name, col_xplot, col_yplot, type_plot:int, *args): #type_plot -> 0 for dist, 1 for money
     fig, ax = matplotlib.pyplot.subplots(figsize=(8, 6), dpi=100)
     # Initiate the sns boxplotter
     sns.boxplot(x=df_name[col_xplot],
@@ -79,7 +86,7 @@ def df_multi_boxplotter(df_name, col_xplot, col_yplot, type_plot:int, *args): #t
         matplotlib.pyplot.ylabel('{}'.format(col_yplot))
     # Set xtick rotation
     if args:
-        matplotlib.pyplot.xticks(rotation=0, horizontalalignment=arg[0])	
+        matplotlib.pyplot.xticks(rotation=0, horizontalalignment=args[0])
     # Set y axis grid only
     ax.yaxis.grid(True)
     matplotlib.pyplot.savefig("Boxplot_x-{}_y-{}.png".format(col_xplot, col_yplot))
@@ -90,9 +97,9 @@ def df_explore_unique_categories(df_name, col):
     df_col_unqiue = df_name.drop_duplicates(subset=col, keep='first')
     return df_col_unqiue[col]
 
-def df_histplotter(df_name, col_plot, type_plot:int, bins=10): #type_plot -> 0 for dist, 1 for money
-    fig = matplotlib.pyplot.subplots(figsize=(8, 6), dpi=85)
-    sns.histplot(data=df_name, x=col_plot)
+def df_histplotter(df_name, col_plot, type_plot:int, bins=10, *args): #type_plot -> 0 for dist, 1 for money
+    fig, ax = matplotlib.pyplot.subplots(figsize=(8, 6), dpi=85)
+    x, y = sns.histplot(data=df_name, x=col_plot)
     matplotlib.pyplot.title('{} histogram plot'.format(col_plot))
     if type_plot == 0:
         matplotlib.pyplot.xlabel('{} in miles'.format(col_plot))
@@ -103,7 +110,13 @@ def df_histplotter(df_name, col_plot, type_plot:int, bins=10): #type_plot -> 0 f
     #if df_name[col_plot].max() > 0:
     #    matplotlib.pyplot.xlim(0.0, 1.25*df_name[col_plot].max())
     #else:
-    #    matplotlib.pyplot.xlim(0.0-(1.25*df_name[col_plot].max()/bins), 1.25*df_name[col_plot].max()) 
+    #    matplotlib.pyplot.xlim(0.0-(1.25*df_name[col_plot].max()/bins), 1.25*df_name[col_plot].max())
+    if args:
+        if isinstance(args[0], dict):
+            args_dict = args[0]
+            mean = ax.vlines(x=args_dict['mean'], ymin=y.min(), ymax=y.max(), colors='mean')
+            mode = ax.vlines(x=args_dict['mode'], ymin=y.min(), ymax=y.max(), colors='mode')
+            median = ax.vlines(x=args_dict['median'], ymin=y.min(), ymax=y.max(), colors='median')
     matplotlib.pyplot.savefig("Histogram_x-{}.png".format(col_plot))
     matplotlib.pyplot.show()
 
@@ -131,32 +144,43 @@ def df_mask_with_list(df, df_col, list_comp: list, mask_type: int): # mask_type 
         companies_not_in_industry_list = df[~mask_if_industry_list]
     return print(list(set(companies_not_in_industry_list[df_col].tolist())))
 
-def df_groupby_mask_operate(df, col_name_masker: str, col_name_operate: str, filter_bool: bool, filter_str: str, *args):
+def df_groupby_mask_operate(df, col_name_masker: str, col_name_operate: str, *args):
     df_groupby = df
     operations_list = []
     for arg in args:
         operations_list.append(arg)
-    if filter_bool:
-        if filter_str in payment_names:
-            keys = list(filter(lambda key: payments_match_dict[key] == filter_str, payments_match_dict))
-            mask = df_groupby[col_name_masker] == int(keys[0])
-        else:
-            keys = filter_str
-            mask = df_groupby[col_name_masker] == keys
-        df_filtered = df_groupby[mask]
-        df_aggregate = df_filtered[[col_name_operate]].agg(operations_list)
-        return df_aggregate[col_name_operate][0]
-    else:
-        df_filtered = df_groupby.groupby([col_name_masker]).agg({col_name_operate:operations_list})
-        return df_filtered
+    df_filtered = df_groupby.groupby([col_name_masker]).agg({col_name_operate:operations_list})
+    return df_filtered
+    
+def df_cross_corr_check(df_name, cols_y: list, cols_x: list):
+    # numerical linearity check using correlation coefficient
+    global corr_matrix_df
+    corr_matrix_df = pd.DataFrame({"col_name": cols_x})
+    for col_y in cols_y:
+        cols_y_col_y_index = cols_y.index(col_y)
+        correl_cols = [df_name[col_y].corr(df_name[col_x]) for col_x in cols_x if col_x != col_y]
+        correl_cols.insert(cols_y_col_y_index, float(1.0))
+        correl_df_additions = pd.DataFrame({col_y: correl_cols})
+        corr_matrix_df = pd.concat([corr_matrix_df, correl_df_additions], axis=1)
+    corr_matrix_df = corr_matrix_df.set_index('col_name')
+    return corr_matrix_df
+    
+def df_class_balance(df_filtered):
+    df_filtered_data = df_filtered[df_filtered.columns.tolist()[0]]
+    df_classes = df_filtered_data.index.tolist()
+    for each_class in df_classes:
+        class_count = df_filtered_data[each_class]
+        class_ratio = class_count / df_filtered_data.sum()
+        class_ratio_in_pct = format(class_ratio, ".1%")
+        print(class_ratio_in_pct, "in class", each_class)
 
-def df_grouped_barplotter(df_name, col_groupby: str, col_plot: str, type_plot: int, *args):
-    df_grouped = df_groupby_mask_operate(df_name, col_groupby, col_plot, 0, '1', args[0])
+def df_grouped_barplotter(df_name, col_groupby: str, col_plot: str, type_plot: int):
+    df_grouped = df_groupby_mask_operate(df_name, col_groupby, col_plot, 0, '1', 'mean')
     x_plot = [row for row, index in df_grouped.iterrows()]
     y_plot = [index[0] for row, index in df_grouped.iterrows()]
     matplotlib.pyplot.figure(figsize=(8, 6), dpi=85)
-    matplotlib.pyplot.title('{} of {} by {} grouped bar plot'.format(args[0], col_plot, col_groupby))
-    sns.barplot(x=x_plot, y=y_plot, errorbar=('ci', False))
+    matplotlib.pyplot.title('{} by {} grouped bar plot'.format(col_plot, col_groupby))
+    sns.barplot(x=x_plot, y=y_plot, ci=False)
     if type_plot == 0:
         matplotlib.pyplot.ylabel('{} in miles'.format(col_plot))
     if type_plot == 1:
@@ -187,8 +211,8 @@ def df_scatterplotter(df_grouped, col_xplot, col_yplot):
 def df_corr_check(df_name, col_y, col_x):
     # numerical linearity check using correlation coefficient
     correl = df_name[col_y].corr(df_name[col_x])
-    print("{} is correlated to {} with a correl coef. r = {}".format(col_y, col_x, correl))
-
+    print("{} is correlated to {} with a correl coef. r = {}".format(col_y, col_x, correl))\
+    
 def df_gaussian_checks(df_name, col_name, *args):
     rules_dict = {1: 0.68,2: 0.95, 3: 0.997}
     conditions_dict = {}
@@ -413,9 +437,93 @@ def logr_train_test_split(df_name, col_response, col_predictor, test_size:float)
     X_train, X_test, y_train, y_test = sklmodslct.train_test_split(X,y,\
                                   test_size=test_size/100,random_state=42)
     logistic_regression = {}
-    logistic_regression["Variables"] = [col_predictor, col_response]
-    logistic_regression["Model"] = X_train, X_test, y_train, y_test
+    logistic_regression["variables"] = [col_predictor, col_response]
+    logistic_regression["model"] = X_train, X_test, y_train, y_test
     return logistic_regression
+
+def ml_train_test_split(df_name, col_target, test_size:float):
+    df_name_columns = df_name.columns.tolist()
+    index_of_target = df_name_columns.index(col_target)
+    del df_name_columns[index_of_target]
+    # Define the y (target) variable.
+    target = df_name[col_target]
+    # Define the X (predictor) variables.
+    predictors = df_name[df_name_columns]
+    X = predictors
+    y = target
+    X_train, X_test, y_train, y_test = sklmodslct.train_test_split(X,y,\
+                                  test_size=test_size/100,random_state=42)
+    # Save the model to a dictionary for use later 
+    ml_build = {}
+    ml_build["target"] = [col_target]
+    ml_build["predictors"] = df_name_columns
+    ml_build["model"] = X_train, X_test, y_train, y_test
+    return ml_build
+
+def ml_naive_bayes_model(train_test_split_nm):
+    ml_data_partition = train_test_split_nm
+    X_train, X_test, y_train, y_test = ml_data_partition["model"]
+    # Assign `nb` to be the appropriate implementation of Naive Bayes.
+    nb = sklnvbys.GaussianNB()
+    # Fit the model on your training data.
+    nb.fit(X_train, y_train)
+    # Apply your model to predict on your test data. Call this "y_pred".
+    y_pred = nb.predict(X_test)
+    # Save the model to a dictionary for use later
+    ml_model = {}
+    ml_model["ml_model"] = nb
+    ml_model["ml_predictions"] = y_pred
+    ml_model["ml_partition"] = X_train, X_test, y_train, y_test
+    return ml_model
+
+def ml_naive_bayes_metrics(naive_bayes_nm):
+    ml_naive_bayes = naive_bayes_nm
+    X_train, X_test, y_train, y_test = ml_naive_bayes["ml_partition"]
+    y_pred = ml_naive_bayes["ml_predictions"]
+    # Print your accuracy score.
+    accuracy = format(sklmtrcs.accuracy_score(y_test, y_pred), "0.1%")
+    print("accuracy:", accuracy)
+    # Print your precision score.
+    precision = format(sklmtrcs.precision_score(y_test, y_pred), "0.1%")
+    print("precision:", precision)
+    # Print your recall score.
+    recall = format(sklmtrcs.recall_score(y_test, y_pred), "0.1%")
+    print("recall:", recall)
+    # Print your f1 score.
+    f1 = format(sklmtrcs.f1_score(y_test, y_pred), "0.1%")
+    print("f1:", f1)
+    
+def ml_naive_bayes_confusion(naive_bayes_nm):
+    ml_naive_bayes = naive_bayes_nm
+    X_train, X_test, y_train, y_test = ml_naive_bayes["ml_partition"]
+    y_pred = ml_naive_bayes["ml_predictions"]
+    model = ml_naive_bayes["ml_model"]
+    # confusion matrix
+    confusion_matrix = sklmtrcs.confusion_matrix(y_test, y_pred,\
+                        labels=model.classes_)
+    # evaluation metrics
+    false_negatives = confusion_matrix[1][0]
+    true_negatives = confusion_matrix[0][0]
+    false_positives = confusion_matrix[0][1]
+    true_positives = confusion_matrix[1][1]
+    # cm = tensor[i][j]
+    model_recall = true_positives/\
+          (false_negatives+true_positives)
+    model_precision = true_positives/\
+          (false_positives+true_positives)
+    model_accuracy = (true_positives+true_negatives)/\
+          (false_negatives+true_negatives+\
+           false_positives+true_positives)
+    model_f1 = (2.0*model_precision*model_recall)/\
+          (model_precision*model_recall)
+    cm_display = sklmtrcs.ConfusionMatrixDisplay(confusion_matrix=confusion_matrix,\
+                        display_labels=model.classes_)
+    cm_display.plot()
+    matplotlib.pyplot.show()
+    #return {"precision": format(model_precision, "0.1%"), 
+    #        "recall": format(model_recall, "0.1%"), 
+    #        "accuracy": format(model_accuracy, "0.1%"),
+    #        "f1_score": format(model_f1, "0.1%")}
 
 def df_one_hot_enconding(df_name, col_name, *binary_bool:bool):
     df_unique_groups = df_explore_unique_categories(df_name, col_name).values.tolist()
@@ -442,3 +550,8 @@ def df_one_hot_enconding(df_name, col_name, *binary_bool:bool):
 
 def df_info_dtypes(df_name):
     print(df_name.info())
+    
+def df_column_nms(df_name):
+    print("column names (verbose):")
+    for i in df_name.columns.tolist():
+        print(i)
